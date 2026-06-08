@@ -571,25 +571,32 @@ Recommande la rampe la plus adaptée parmi les candidats. Si non conforme, expli
 
   showTyping();
   try {
+    // Pré-filtrer : uniquement les vraies rampes (nom contient rampe/seuil/plan)
+    const trueRamps = rampProducts.filter(p => /rampe|seuil|plan inclin/i.test(p.n));
     const resp = await fetch(API_URL, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         question: contexte,
-        products: rampProducts,
-        mode: currentMode,
-        systemOverride: `Tu es l'assistant technique Identités pour les rampes d'accès. ${contexte}`
+        products: trueRamps.slice(0, 30),
+        mode: currentMode
       })
     });
     removeTyping();
     const data = await resp.json();
-    addBotMessage(data.answer, rampProducts.slice(0,4));
+    // Extraire les refs mentionnées dans la réponse Claude
+    const mentionedRefs = (data.answer.match(/\b8\d{4,6}[A-Z]?\b/g) || []);
+    const shownCards = mentionedRefs.length > 0
+      ? mentionedRefs.map(r => PRODUCTS.find(p => p.r === r)).filter(Boolean)
+      : trueRamps.slice(0, 4);
+    addBotMessage(data.answer, shownCards.slice(0, 4));
   } catch(e) {
     removeTyping();
+    const trueRamps2 = rampProducts.filter(p => /rampe|seuil|plan inclin/i.test(p.n));
     const msg = conforme
-      ? `Pente de ${pente}% — conforme ✅. Voici les rampes disponibles :`
-      : `Pente de ${pente}% — dépasse la norme ${st.locType} (${penteNormale}%). Il faudrait ${Math.ceil(st.H / (penteNormale/100))} cm de profondeur. Voici les options les plus proches :`;
-    addBotMessage(msg, rampProducts.slice(0,4));
+      ? `Pente de ${pente}% — conforme. Voici les rampes disponibles :`
+      : `Pente de ${pente}% — dépasse la norme ${st.locType} (${penteNormale}%). Il faudrait ${Math.ceil(st.H / (penteNormale/100))} cm de profondeur. Voici les options :`;
+    addBotMessage(msg, trueRamps2.slice(0, 4));
   }
 
   setTimeout(()=>showChips(['Autre recherche','Nouvelle rampe','Voir plus de produits']), 600);
@@ -599,7 +606,7 @@ Recommande la rampe la plus adaptée parmi les candidats. Si non conforme, expli
 async function processInput(text) {
   // Mode dialogue rampe
   if (rampState !== null) { addUserMessage(text); conversationHistory.push({role:'user', text}); await processRamp(text); return; }
-  if (isRampQuery(text)) { addUserMessage(text); conversationHistory.push({role:'user', text}); rampState = {step:0, H:null, locType:null, D:null}; await processRamp(text); return; }
+  if (isRampQuery(text)) { addUserMessage(text); conversationHistory.push({role:'user', text}); rampState = {step:1, H:null, locType:null, D:null}; await processRamp(text); return; }
 
   addUserMessage(text);
   showTyping();
