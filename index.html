@@ -482,7 +482,19 @@ function isRampQuery(text) {
 }
 
 function extractNumber(text) {
-  const m = text.match(/(\d+[\.,]?\d*)\s*(?:cm|centim)?/);
+  const t = norm(text);
+  // Cas "X metres Y0" ou "X m Y0" -> cm
+  let m = t.match(/(\d+)\s*m[e\xe8]tres?\s+(\d+)/);
+  if (m) return parseInt(m[1])*100 + parseInt(m[2]);
+  m = t.match(/(\d+)\s*m[\s,]\s*(\d+)/);
+  if (m) return parseInt(m[1])*100 + parseInt(m[2]);
+  // Cas "X metres" ou "X m" -> cm
+  m = t.match(/(\d+[\.,]?\d*)\s*m[e\xe8]tres?/);
+  if (m) return parseFloat(m[1].replace(',','.'))*100;
+  m = t.match(/(\d+[\.,]?\d*)\s*m\b/);
+  if (m) return parseFloat(m[1].replace(',','.'))*100;
+  // Cas direct cm
+  m = t.match(/(\d+[\.,]?\d*)\s*(?:cm|centim)?/);
   return m ? parseFloat(m[1].replace(',','.')) : null;
 }
 
