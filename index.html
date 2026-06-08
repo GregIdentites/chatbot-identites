@@ -532,7 +532,7 @@ async function processRamp(text) {
   // Étape 2 : type de lieu
   if (st.locType === null) {
     st.step = 2;
-    addBotMessage(`Merci. Pour une hauteur de \${st.H} cm, s'agit-il d'un accès en **ERP** (établissement recevant du public) ou à **domicile** (particulier) ?`);
+    addBotMessage(`Merci. Pour une hauteur de ${st.H} cm, s'agit-il d'un accès en **ERP** (établissement recevant du public) ou à **domicile** (particulier) ?`);
     showChips(['ERP / professionnel','Domicile / particulier']);
     return;
   }
@@ -541,7 +541,7 @@ async function processRamp(text) {
   if (st.D === null) {
     st.step = 3;
     const norm_pct = st.locType === 'ERP' ? '5%' : '12%';
-    addBotMessage(`D'accord (\${st.locType}). La norme recommande une pente de \${norm_pct} max. Quelle est la profondeur disponible devant l'obstacle (en cm) ?`);
+    addBotMessage(`D'accord (${st.locType}). La norme recommande une pente de ${norm_pct} max. Quelle est la profondeur disponible devant l'obstacle (en cm) ?`);
     return;
   }
 
@@ -554,7 +554,7 @@ async function processRamp(text) {
   // Chercher les produits rampe
   const rampProducts = searchProducts('rampe seuil accessibilite plan incline').slice(0, 8);
 
-  const contexte = `Configuration : hauteur \${st.H} cm, profondeur \${st.D} cm → pente \${pente}% (norme \${st.locType} : \${penteNormale}% max → \${conforme ? 'CONFORME ✅' : 'NON CONFORME ⚠️'}).
+  const contexte = `Configuration : hauteur ${st.H} cm, profondeur ${st.D} cm → pente ${pente}% (norme ${st.locType} : ${penteNormale}% max → ${conforme ? 'CONFORME ✅' : 'NON CONFORME ⚠️'}).
 Recommande la rampe la plus adaptée parmi les candidats. Si non conforme, explique pourquoi en une phrase et propose une alternative (rallonger la rampe, élévateur).`;
 
   showTyping();
@@ -566,7 +566,7 @@ Recommande la rampe la plus adaptée parmi les candidats. Si non conforme, expli
         question: contexte,
         products: rampProducts,
         mode: currentMode,
-        systemOverride: `Tu es l'assistant technique Identités pour les rampes d'accès. \${contexte}`
+        systemOverride: `Tu es l'assistant technique Identités pour les rampes d'accès. ${contexte}`
       })
     });
     removeTyping();
@@ -575,8 +575,8 @@ Recommande la rampe la plus adaptée parmi les candidats. Si non conforme, expli
   } catch(e) {
     removeTyping();
     const msg = conforme
-      ? `Pente de \${pente}% — conforme ✅. Voici les rampes disponibles :`
-      : `Pente de \${pente}% — dépasse la norme \${st.locType} (\${penteNormale}%). Il faudrait \${Math.ceil(st.H / (penteNormale/100))} cm de profondeur. Voici les options les plus proches :`;
+      ? `Pente de ${pente}% — conforme ✅. Voici les rampes disponibles :`
+      : `Pente de ${pente}% — dépasse la norme ${st.locType} (${penteNormale}%). Il faudrait ${Math.ceil(st.H / (penteNormale/100))} cm de profondeur. Voici les options les plus proches :`;
     addBotMessage(msg, rampProducts.slice(0,4));
   }
 
