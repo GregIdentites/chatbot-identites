@@ -488,19 +488,37 @@ function processInput(text) {  addUserMessage(text);
 
 // ── SEARCH ────────────────────────────────────────────────────────────────
 const SYNONYMS = {
+  // Baignoire
   'enjamber':'baignoire','rebord':'baignoire','baignoire':'baignoire','bain':'baignoire',
-  'entrer':'baignoire','sortir':'baignoire','jambe':'baignoire',
+  'entrer':'baignoire','sortir':'baignoire','jambe':'baignoire','baigner':'baignoire',
+  // Lever / asseoir
   'lever':'lever','relever':'lever','asseoir':'lever','debout':'lever','difficul':'lever',
+  'releveur':'lever','rehausseur':'lever','rehausse':'lever',
+  // Elevateur
   'descendre':'elevateur','remonter':'elevateur','motori':'elevateur','elevateur':'elevateur',
-  'douche':'douche','doucher':'douche',
-  'siege':'siege','chaise':'siege','tabouret':'siege','fauteuil de bain':'siege',
+  // Douche
+  'douche':'douche','doucher':'douche','douchette':'douche',
+  // Siege
+  'siege':'siege','chaise':'siege','tabouret':'siege','fauteuil de bain':'siege','banc':'siege',
+  // Transfert
   'transfert':'transfert','pivot':'transfert','galette':'transfert',
+  // Securite
   'glisser':'securite','chute':'securite','tomber':'securite','antiderapant':'securite','tapis':'securite',
-  'marcher':'marche','canne':'marche','deambulateur':'marche',
-  'barre':'barre','poignee':'barre','appui':'barre','maintien':'barre',
+  'ventouse':'securite','grip':'securite',
+  // Marche / rollator
+  'marcher':'marche','canne':'marche','deambulateur':'marche','rollator':'marche',
+  'rollat':'marche','cadre march':'marche','marchett':'marche','trott':'marche',
+  'aide march':'marche','walker':'marche','mobilite':'marche',
+  // Barres
+  'barre':'barre','poignee':'barre','appui':'barre','maintien':'barre','rampe':'barre',
+  // Hygiene
   'laver':'hygiene','pied':'hygiene','dos':'hygiene','eponge':'hygiene','brosse':'hygiene',
-  'fauteuil roulant':'fauteuil','roulant':'fauteuil','handicap':'fauteuil',
+  'peigne':'hygiene','soins':'hygiene',
+  // Fauteuil roulant
+  'fauteuil roulant':'fauteuil','roulant':'fauteuil','handicap':'fauteuil','pmr':'fauteuil',
+  // Personnes
   'maman':'personne','papa':'personne','grand':'personne','senior':'personne',
+  'personne agee':'personne','parent':'personne','retraite':'personne',
 };
 const CAT_USAGE = {
   'baignoire':['baignoire','planche de bain','elevateur de bain','transfert','fauteuil de bain'],
@@ -510,14 +528,26 @@ const CAT_USAGE = {
   'siege':['siege','chaise','tabouret'],
   'transfert':['transfert','pivot','galette'],
   'securite':['antiderapant','securite','ventouse','tapis'],
-  'marche':['marche','deambulateur','canne'],
-  'barre':["barre d'appui",'poignee','maintien'],
+  'marche':['marche','deambulateur','canne','rollator','cadre de marche','walker'],
+  'barre':["barre d'appui",'poignee','maintien','rampe'],
   'hygiene':['hygiene','eponge','brosse','peigne'],
-  'fauteuil':['fauteuil roulant','appui-tete'],
+  'fauteuil':['fauteuil roulant','appui-tete','pmr'],
 };
 
+// Mots vides : evite faux positifs
+const STOPWORDS = new Set([
+  'les','des','une','pour','qui','que','pas','est','par','sur','dans','avec',
+  'son','ses','mon','mes','ton','tes','notre','votre','leur','leurs',
+  'peut','puis','plus','mais','bien','tout','tous','comme','fait','faire',
+  'aide','avoir','etre','tres','peu','trop','mois','jour','fois','chez',
+  'soixante','dix','vingt','trente','quarante','cinquante','cent','mille',
+  'passer','passe','permettre','permet','permis',
+  'porte','portes','fenetre','couloir','maison',
+  'cherche','voudrais','aimerais','besoin','souhaite','veux','voudrai',
+  'permett','permette','souhai','centimetre','centimetres','largeur','hauteur',
+]);
 function norm(s){ return String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9 ]/g,' '); }
-function tokenize(t){ return norm(t).split(/\s+/).filter(w=>w.length>2); }
+function tokenize(t){ return norm(t).split(/\s+/).filter(w=>w.length>2 && !STOPWORDS.has(w)); }
 function getCategories(tokens){
   const cats=new Set();
   tokens.forEach(t=>{ for(const[k,v]of Object.entries(SYNONYMS)){ if(t.startsWith(norm(k).replace(/\s/g,''))) cats.add(v); } });
@@ -526,7 +556,7 @@ function getCategories(tokens){
 function scoreProduct(p, tokens, cats){
   let s=0;
   const u=norm(p.u||''), n=norm(p.n||''), d=norm(p.desc||'');
-  cats.forEach(cat=>{ (CAT_USAGE[cat]||[]).forEach(kw=>{ if(u.includes(norm(kw))) s+=5; }); });
+  cats.forEach(cat=>{ (CAT_USAGE[cat]||[]).forEach(kw=>{ const nkw=norm(kw); if(u.includes(nkw)) s+=5; else if(n.includes(nkw)) s+=4; }); });
   tokens.forEach(t=>{ if(u.includes(t)) s+=3; if(n.includes(t)) s+=4; if(d.includes(t)) s+=1; });
   return s;
 }
@@ -539,7 +569,7 @@ function searchProducts(query){
   }
   if(!tokens.length&&!cats.size) return [];
   return PRODUCTS.map(p=>({p,s:scoreProduct(p,tokens,cats)}))
-    .filter(x=>x.s>0).sort((a,b)=>b.s-a.s).slice(0,6).map(x=>x.p);
+    .filter(x=>x.s>=4).sort((a,b)=>b.s-a.s).slice(0,6).map(x=>x.p);
 }
 
 // ── CARD ──────────────────────────────────────────────────────────────────
