@@ -471,7 +471,125 @@ function handlePhoto(e) {
 }
 
 // ── PROCESS ───────────────────────────────────────────────────────────────
+// ── RAMPE : dialogue guidé ────────────────────────────────────────────────
+let rampState = null; // null = inactif, sinon {step, H, locType, D}
+
+const RAMP_KEYWORDS = ['rampe','rampes','plan incline','franchir','acces fauteuil',
+  'monter une marche','marche seuil','seuil','montee','descente fauteuil'];
+
+function isRampQuery(text) {
+  const t = norm(text);
+  return RAMP_KEYWORDS.some(k => t.includes(norm(k)));
+}
+
+function extractNumber(text) {
+  const m = text.match(/(\d+[\.,]?\d*)\s*(?:cm|centim)?/);
+  return m ? parseFloat(m[1].replace(',','.')) : null;
+}
+
+function extractLocType(text) {
+  const t = norm(text);
+  if (t.includes('erp') || t.includes('public') || t.includes('etablissement') || t.includes('professionnel')) return 'ERP';
+  if (t.includes('domicile') || t.includes('maison') || t.includes('prive') || t.includes('particulier') || t.includes('chez')) return 'domicile';
+  return null;
+}
+
+async function processRamp(text) {
+  const st = rampState;
+
+  // Détecter si l'utilisateur annule
+  if (norm(text).includes('annul') || norm(text).includes('autre chose')) {
+    rampState = null;
+    addBotMessage('Dialogue rampe annulé. Comment puis-je vous aider ?');
+    showChips(['Baignoire','Douche','Se lever','Rollator','Rampe']);
+    return;
+  }
+
+  // Essayer d'extraire plusieurs infos d'un seul message
+  if (st.step >= 1 && st.H === null) {
+    const n = extractNumber(text);
+    if (n) { st.H = n; st.step = Math.max(st.step, 2); }
+  }
+  if (st.step >= 2 && st.locType === null) {
+    const loc = extractLocType(text);
+    if (loc) { st.locType = loc; st.step = Math.max(st.step, 3); }
+  }
+  if (st.step >= 3 && st.D === null) {
+    const n = extractNumber(text);
+    if (n && n !== st.H) { st.D = n; st.step = 4; }
+  }
+
+  showTyping();
+  await new Promise(r => setTimeout(r, 400));
+  removeTyping();
+
+  // Étape 1 : demander la hauteur
+  if (st.H === null) {
+    st.step = 1;
+    addBotMessage('Quelle est la hauteur totale à franchir (en cm) ? (par exemple : une marche de 18 cm, un seuil de 12 cm…)');
+    return;
+  }
+
+  // Étape 2 : type de lieu
+  if (st.locType === null) {
+    st.step = 2;
+    addBotMessage(\`Merci. Pour une hauteur de \${st.H} cm, s'agit-il d'un accès en **ERP** (établissement recevant du public) ou à **domicile** (particulier) ?\`);
+    showChips(['ERP / professionnel','Domicile / particulier']);
+    return;
+  }
+
+  // Étape 3 : profondeur disponible
+  if (st.D === null) {
+    st.step = 3;
+    const norm_pct = st.locType === 'ERP' ? '5%' : '12%';
+    addBotMessage(\`D'accord (\${st.locType}). La norme recommande une pente de \${norm_pct} max. Quelle est la profondeur disponible devant l'obstacle (en cm) ?\`);
+    return;
+  }
+
+  // Étape 4 : calcul et recommandation
+  st.step = 4;
+  const pente = (st.H / st.D * 100).toFixed(1);
+  const penteNormale = st.locType === 'ERP' ? 5 : 12;
+  const conforme = parseFloat(pente) <= penteNormale;
+
+  // Chercher les produits rampe
+  const rampProducts = searchProducts('rampe seuil accessibilite plan incline').slice(0, 8);
+
+  const contexte = \`Configuration : hauteur \${st.H} cm, profondeur \${st.D} cm → pente \${pente}% (norme \${st.locType} : \${penteNormale}% max → \${conforme ? 'CONFORME ✅' : 'NON CONFORME ⚠️'}).
+Recommande la rampe la plus adaptée parmi les candidats. Si non conforme, explique pourquoi en une phrase et propose une alternative (rallonger la rampe, élévateur).\`;
+
+  showTyping();
+  try {
+    const resp = await fetch(API_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        question: contexte,
+        products: rampProducts,
+        mode: currentMode,
+        systemOverride: \`Tu es l'assistant technique Identités pour les rampes d'accès. \${contexte}\`
+      })
+    });
+    removeTyping();
+    const data = await resp.json();
+    addBotMessage(data.answer, rampProducts.slice(0,4));
+  } catch(e) {
+    removeTyping();
+    const msg = conforme
+      ? \`Pente de \${pente}% — conforme ✅. Voici les rampes disponibles :\`
+      : \`Pente de \${pente}% — dépasse la norme \${st.locType} (\${penteNormale}%). Il faudrait \${Math.ceil(st.H / (penteNormale/100))} cm de profondeur. Voici les options les plus proches :\`;
+    addBotMessage(msg, rampProducts.slice(0,4));
+  }
+
+  setTimeout(()=>showChips(['Autre recherche','Nouvelle rampe','Voir plus de produits']), 600);
+  rampState = null;
+}
+
 async function processInput(text) {
+  // Mode dialogue rampe
+  if (rampState !== null) { addUserMessage(text); conversationHistory.push({role:'user', text}); await processRamp(text); return; }
+  if (isRampQuery(text)) { addUserMessage(text); conversationHistory.push({role:'user', text}); rampState = {step:0, H:null, locType:null, D:null}; await processRamp(text); return; }
+
   addUserMessage(text);
   showTyping();
   conversationHistory.push({role:'user', text});
@@ -495,7 +613,7 @@ async function processInput(text) {
       console.error('API indisponible, mode local:', err);
       if (candidates.length === 0) {
         addBotMessage("Je n'ai pas trouvé de produit correspondant. Pouvez-vous reformuler ?");
-        showChips(['Baignoire','Douche','Se lever',"Barres d'appui",'Rollator']);
+        showChips(['Baignoire','Douche','Se lever',"Barres d'appui",'Rollator','Rampe']);
       } else {
         addBotMessage('Voici les produits les plus adaptés :', candidates);
         setTimeout(()=>showChips(['Autre recherche','Préciser ma demande']), 600);
@@ -506,7 +624,7 @@ async function processInput(text) {
       removeTyping();
       if (candidates.length === 0) {
         addBotMessage("Je n'at pas trouvé de produit correspondant. Essayez avec d'autres mots-clés.");
-        showChips(['Baignoire','Douche','Se lever',"Barres d'appui",'Rollator']);
+        showChips(['Baignoire','Douche','Se lever',"Barres d'appui",'Rollator','Rampe']);
       } else {
         addBotMessage('Voici les produits les plus adaptés :', candidates);
         setTimeout(()=>showChips(['Autre recherche','Préciser ma demande']), 600);
