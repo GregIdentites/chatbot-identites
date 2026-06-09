@@ -13,7 +13,7 @@ export default async function handler(req, res) {
 
     // Construire le résumé des produits candidats
     const productList = (products || []).slice(0, 12).map(p =>
-      `• Réf ${p.r} — ${p.n}${p.u ? ' | ' + p.u.split('|')[0].trim() : ''}${p.p ? ' | Poids max : ' + p.p : ''}${p.d ? ' | Dim : ' + p.d : ''}${p.ttc ? ' | Prix TTC : ' + p.ttc + ' €' : ''}${p.ht ? ' | HT : ' + p.ht + ' €' : ''}${p.desc ? '\n  ' + p.desc.slice(0, 120) : ''}`
+      `• Réf ${p.r} — ${p.n}${p.u ? ' | ' + p.u.split('|')[0].trim() : ''}${p.p ? ' | Poids max : ' + p.p : ''}${p.d ? ' | Dim : ' + p.d : ''}${p._spec ? ' | Specs : ' + p._spec : ''}${p.ttc ? ' | Prix TTC : ' + p.ttc + ' €' : ''}${p.ht ? ' | HT : ' + p.ht + ' €' : ''}${p.desc ? '\n  ' + p.desc.slice(0, 120) : ''}`
     ).join('\n');
 
     const isCommercial = mode === 'commercial';
