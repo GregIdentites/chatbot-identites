@@ -693,7 +693,12 @@ async function processInput(text) {
       removeTyping();
       if (!resp.ok) throw new Error('API error ' + resp.status);
       const data = await resp.json();
-      addBotMessage(data.answer, candidates.slice(0, 5));
+      // Afficher uniquement les produits cités par Claude
+      const mentionedRefs = (data.answer.match(/\b8\d{4,6}[A-Z]?\b/g) || []);
+      const shownCards = mentionedRefs.length > 0
+        ? mentionedRefs.map(r => PRODUCTS.find(p => p.r === r)).filter(Boolean)
+        : candidates.slice(0, 4);
+      addBotMessage(data.answer, shownCards.slice(0, 4));
       setTimeout(()=>showChips(['Autre recherche','Préciser ma demande','Voir plus de produits']), 600);
     } catch(err) {
       removeTyping();
