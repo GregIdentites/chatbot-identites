@@ -668,31 +668,44 @@ const STOPWORDS = new Set([
 function norm(s){ return String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9 ]/g,' '); }
 function tokenize(t){ return norm(t).split(/\s+/).filter(w=>w.length>2 && !STOPWORDS.has(w)); }
 
-function scoreProduct(p, tokens){
-  const fi   = p.fi != null ? FAMILIES[p.fi] : null;
-  const kw   = norm(fi ? fi.kw  : '');
-  const pb   = norm(fi ? fi.pb  : '');
-  const fam  = norm(fi ? fi.fam : '');
-  const sfam = norm(fi ? fi.sf  : '');
-  const nom  = norm(p.n  || '');
-  const usg  = norm(p.u  || '');
-  const desc = norm(p.desc || '');
+// ── PRÉ-CALCUL DES TOKENS (exécuté une fois au chargement) ──────────────
+function makeSet(str) {
+  return new Set(norm(str).split(/\s+/).filter(w => w.length > 2 && !STOPWORDS.has(w)));
+}
+
+// Index familles
+const FAM_TOK = {};
+Object.keys(FAMILIES).forEach(fi => {
+  const f = FAMILIES[fi];
+  FAM_TOK[fi] = {
+    kw:  makeSet(f.kw  || ''),
+    pb:  makeSet(f.pb  || ''),
+    fam: makeSet(f.fam || ''),
+    sf:  makeSet(f.sf  || '')
+  };
+});
+
+// Index produits (nom + usage + description)
+const PROD_TOK = PRODUCTS.map(p => ({
+  n: makeSet(p.n    || ''),
+  u: makeSet(p.u    || ''),
+  d: makeSet((p.desc || '').slice(0, 400))
+}));
+
+function scoreProduct(p, tokens, pIdx) {
+  const fi = p.fi != null ? FAM_TOK[p.fi] : null;
+  const pt = PROD_TOK[pIdx];
   let s = 0;
   tokens.forEach(t => {
-    // Synonymes/mots-clés famille : score le plus élevé
-    if (kw.includes(t))   s += 8;
-    // Problématique cible
-    if (pb.includes(t))   s += 6;
-    // Sous-famille
-    if (sfam.includes(t)) s += 5;
-    // Famille
-    if (fam.includes(t))  s += 4;
-    // Nom produit
-    if (nom.includes(t))  s += 4;
-    // Usage existant
-    if (usg.includes(t))  s += 3;
-    // Description texte
-    if (desc.includes(t)) s += 1;
+    if (fi) {
+      if (fi.kw.has(t))  s += 8;  // mots-clés famille
+      if (fi.pb.has(t))  s += 6;  // problématique
+      if (fi.sf.has(t))  s += 5;  // sous-famille
+      if (fi.fam.has(t)) s += 4;  // famille
+    }
+    if (pt.n.has(t)) s += 4;  // nom produit
+    if (pt.u.has(t)) s += 3;  // usage
+    if (pt.d.has(t)) s += 1;  // description
   });
   return s;
 }
@@ -731,7 +744,7 @@ function searchProducts(query){
     if (ex.length) return ex;
   }
   if (!tokens.length) return [];
-  return PRODUCTS.map(p => ({p, s: scoreProduct(p, tokens)}))
+  return PRODUCTS.map((p, idx) => ({p, s: scoreProduct(p, tokens, idx)}))
     .filter(x => x.s >= 4)
     .sort((a,b) => b.s - a.s)
     .slice(0, 8)
