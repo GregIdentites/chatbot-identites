@@ -431,14 +431,53 @@ function addBotMessage(text, cards) {
   const msgs = document.getElementById('messages');
   const div  = document.createElement('div');
   div.className = 'msg bot';
-  let html = `<div class="bubble">${text.replace(/\n/g,'<br>')}</div>`;
+  let inner = `<div class="bubble">${text.replace(/\n/g,'<br>')}</div>`;
+
   if (cards && cards.length) {
-    html += '<div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">';
-    cards.forEach((p,i)=>{ html += buildCard(p,i); });
-    html += '</div>';
+    // Filtres prix dynamiques (uniquement si > 3 produits)
+    if (cards.length > 3) {
+      const prices = cards.map(p => parseFloat((p.ttc||'').toString().replace(',','.')) || 0);
+      const mn = Math.min(...prices.filter(x=>x>0));
+      const mx = Math.max(...prices);
+      const mid = Math.round((mn + mx) / 2);
+      const gid = 'fg_' + Date.now();
+      inner += `<div id="${gid}" style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px">
+        <button onclick="filterCards('${gid}',0,99999)" style="border:none;border-radius:12px;padding:4px 12px;cursor:pointer;background:#1a3c5e;color:#fff;font-size:12px">Tous (${cards.length})</button>
+        <button onclick="filterCards('${gid}',0,${mid})" style="border:none;border-radius:12px;padding:4px 12px;cursor:pointer;background:#e8f0fb;color:#1a3c5e;font-size:12px">≤ ${mid} €</button>
+        <button onclick="filterCards('${gid}',${mid+1},99999)" style="border:none;border-radius:12px;padding:4px 12px;cursor:pointer;background:#e8f0fb;color:#1a3c5e;font-size:12px">> ${mid} €</button>
+      </div>`;
+      inner += `<div class="cards-grid" data-group="${gid}" style="display:flex;flex-direction:column;gap:8px;margin-top:4px">`;
+    } else {
+      inner += '<div class="cards-grid" style="display:flex;flex-direction:column;gap:8px;margin-top:6px">';
+    }
+    cards.forEach((p,i) => {
+      const price = parseFloat((p.ttc||'').toString().replace(',','.')) || 0;
+      inner += `<div class="card-wrap" data-price="${price}">${buildCard(p,i)}</div>`;
+    });
+    inner += '</div>';
   }
-  html += `<div class="msg-time">${now()}</div>`;
-  div.innerHTML=html; msgs.appendChild(div); scrollBottom();
+
+  inner += `<div class="msg-time">${now()}</div>`;
+  div.innerHTML = inner;
+  msgs.appendChild(div);
+  scrollBottom();
+}
+
+function filterCards(gid, min, max) {
+  const grid = document.querySelector(`.cards-grid[data-group="${gid}"]`);
+  if (!grid) return;
+  grid.querySelectorAll('.card-wrap').forEach(w => {
+    const p = parseFloat(w.dataset.price) || 0;
+    w.style.display = (p >= min && p <= max) ? '' : 'none';
+  });
+  // Highlight active button
+  const bar = document.getElementById(gid);
+  if (bar) bar.querySelectorAll('button').forEach((b,i) => {
+    b.style.background = b.getAttribute('onclick').includes(`'${gid}',0,99999`) ? '#1a3c5e' :
+                         b.getAttribute('onclick').includes(`'${gid}',0,`) ? (max <= 99998 && min === 0 ? '#1a3c5e' : '#e8f0fb') :
+                         (min > 0 && max === 99999 ? '#1a3c5e' : '#e8f0fb');
+    b.style.color = b.style.background === '#1a3c5e' ? '#fff' : '#1a3c5e';
+  });
 }
 
 function addUserMessage(text) {
@@ -658,7 +697,7 @@ Recommande la rampe la plus adaptée parmi les candidats. Si non conforme, expli
     const shownCards = mentionedRefs.length > 0
       ? mentionedRefs.map(r => PRODUCTS.find(p => p.r === r)).filter(Boolean)
       : trueRamps.slice(0, 4);
-    addBotMessage(data.answer, shownCards.slice(0, 4));
+    addBotMessage(data.answer, shownCards);
   } catch(e) {
     removeTyping();
     const trueRamps2 = rampProducts.filter(p => /rampe|seuil|plan inclin/i.test(p.n));
@@ -697,8 +736,8 @@ async function processInput(text) {
       const mentionedRefs = (data.answer.match(/\b8\d{4,6}[A-Z]?\b/g) || []);
       const shownCards = mentionedRefs.length > 0
         ? mentionedRefs.map(r => PRODUCTS.find(p => p.r === r)).filter(Boolean)
-        : candidates.slice(0, 4);
-      addBotMessage(data.answer, shownCards.slice(0, 4));
+        : candidates.slice(0, 12);
+      addBotMessage(data.answer, shownCards);
       setTimeout(()=>showChips(['Autre recherche','Préciser ma demande','Voir plus de produits']), 600);
     } catch(err) {
       removeTyping();
